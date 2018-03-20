@@ -1,0 +1,414 @@
+##for late 2000s:
+late2000 <- rbind(n2007, n2008, n2009, n2010)
+class(late2000)
+colnames(late2000)[5] <- "title"
+colnames(late2000)[6] <- "classification1"
+colnames(late2000)[7] <- "classification2"
+colnames(late2000)[8] <- "classification3"
+colnames(late2000)[17] <- "article"
+
+names(late2000)
+
+
+
+## extracting the content of the articles 
+content2000 <- late2000$article
+
+# pre-processing:
+content2000 <- gsub("'", "", content2000)  # remove apostrophes
+content2000 <- gsub("[[:punct:]]", " ", content2000)  # replace punctuation with space
+content2000 <- gsub("[[:cntrl:]]", " ", content2000)  # replace control characters with space
+content2000 <- gsub("^[[:space:]]+", "", content2000) # remove whitespace at beginning of documents
+content2000 <- gsub("[[:space:]]+$", "", content2000) # remove whitespace at end of document
+
+### extracting the necessary parts (subject, verb, adjective)
+ko_words <- function(doc) {
+  d <- as.character(doc)
+  pos <- unlist(SimplePos22(d))
+  
+  extracted <- str_match(pos, '([가-힣]+)/[NP][A-Z]')
+  
+  keyword <- extracted[, 2]
+  keyword[!is.na(keyword)]
+}
+
+pos_2000 <- Map(ko_words, content2000) 
+
+# making it into a corpus 
+corpus_2000 <- Corpus(VectorSource(pos_2000))
+
+# vcontent2000 <- as.vector(content2000)
+# corpus_2000 <- Corpus(VectorSource(vcontent2000))
+# save(corpus_2000, file="corpus_2000.rda")
+
+
+stopWords <- c("밝히", "따르", "보이", "지나", "대하", "위하") ## removing the terms that 'dominate' the results, but not content-wise relevant
+
+dtm_2000 <- DocumentTermMatrix(corpus_2000, control=list(
+  removePunctuation=TRUE, stopwords=stopWords, 
+  removeNumbers=TRUE, weighting=weightTf))
+
+##### removing the sparse terms, and excluding the zero-entry rows (from the analysis)
+dtm_2000 <- removeSparseTerms(dtm_2000, 0.99)
+rowTotals <- apply(dtm_2000 , 1, sum) 
+dtm_2000   <- dtm_2000[rowTotals> 0, ]        
+save(dtm_2000, file="dtm_2000.rda")
+
+
+inspect(dtm_2000[1:10, 1:10])
+
+
+lda_2000 <- LDA(dtm_2000.new, k=20)
+tidy_lda_2000 <- tidy(lda_2000, matrix="beta")
+
+q_top_terms <- tidy_lda_2000 %>%
+  group_by(topic) %>%
+  top_n(15, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+q_top_terms %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill=factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~ topic, scales="free") +
+  coord_flip() +
+  ggtitle("LDA Categorization of Late-2000s Articles")
+  
+ 
+########################### STM ############################
+### for late 2000s; 
+
+out_2000 <- stm::readCorpus(dtm_2000, type = 'slam')
+late2000.out <- stm(documents = out_2000$documents, 
+                         vocab = out_2000$vocab, 
+                         K = 20, 
+                         prevalence = ~`classification1`, 
+                         data = late2000)
+class(late2000.out) #STM
+
+save(late2000.out, file="late2000_stm.rda")
+
+tidytedout <- tidy(late2000.out)
+tidygamma <- tidy(late2000.out, 'gamma')
+
+plot.tidy.semiconductor <- plot(late2000.out, type = 'labels')
+plot.tidy
+
+################################ For late 1990s ###########################################
+
+load("late90s.rda")
+colnames(late90s)[5] <- "title"
+colnames(late90s)[6] <- "classification1"
+colnames(late90s)[7] <- "classification2"
+colnames(late90s)[8] <- "classification3"
+colnames(late90s)[17] <- "article"
+
+names(late90s)
+
+save(late90s, file="late90s.rda")
+
+
+late90s <- late90s$article
+
+contents90 <- gsub("'", "", late90s)  # remove apostrophes
+contents90 <- gsub("[[:punct:]]", " ", contents90)  # replace punctuation with space
+contents90 <- gsub("[[:cntrl:]]", " ", contents90)  # replace control characters with space
+contents90 <- gsub("^[[:space:]]+", "", contents90) # remove whitespace at beginning of documents
+contents90 <- gsub("[[:space:]]+$", "", contents90) # remove whitespace at end of document
+
+### extracting the necessary parts (체언, 용언)
+ko_words <- function(doc) {
+  d <- as.character(doc)
+  pos <- unlist(SimplePos22(d))
+  
+  extracted <- str_match(pos, '([가-힣]+)/[NP][A-Z]')
+  
+  keyword <- extracted[, 2]
+  keyword[!is.na(keyword)]
+}
+
+pos_late90s <- Map(ko_words, contents)
+
+corpus_late90s <- Corpus(VectorSource(pos_late90s))
+
+stopWords <- c("밝히", "따르", "보이", "지나", "대하", "위하")
+
+dtm_late90s <- DocumentTermMatrix(corpus_late90s, control = list(removePunctuation= TRUE, 
+                                                                 stopWords = stopWords, 
+                                                                 removeNumbers = TRUE, 
+                                                                 weighting=weightTf))
+
+
+dtm_late90s <- removeSparseTerms(dtm_late90s, 0.99)
+
+rowTotals <- apply(dtm_late90s, 1, sum) 
+dtm_late90s   <- dtm_late90s[rowTotals> 0, ]        
+save(dtm_late90s, "dtm_late90s.rda")
+
+#### LDA 
+lda_late90s_20 <- LDA(dtm_late90s, k=20)
+save(lda_late90s_20, file="lda_late90s_20.rda")
+
+topics_late90s_20 <- tidy(lda_late90s_20, matrix="beta") 
+
+save(topics_late90s_20, file="topics_late90s_20.rda")
+
+q_top_terms <- topics_late90s_20 %>%
+  group_by(topic) %>%
+  top_n(15, beta) %>%  ### top 15 words appearing in each topic 
+  ungroup() %>%
+  arrange(topic, -beta)
+
+q_top_terms %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill=factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~ topic, scales="free") +
+  coord_flip() +
+  ggtitle("LDA Categorization of Late 1990s")
+
+### STM
+out <- stm::readCorpus(dtm_late90s, type = 'slam')
+
+library(stm)
+late90s.out <- stm(documents = out$documents, 
+                   vocab = out$vocab, 
+                   K = 20, 
+                   prevalence = ~`classification1`, 
+                   data = late90s)
+
+save(late90s.out, file="late90s.out.rda")
+
+tidy90s <- tidy(late90s.out)
+tidygamma <- tidy(late90s.out, 'gamma')
+
+plot.tidy.90s <- plot(tidy90s, type = 'labels')
+
+plot.tidy
+
+# for computational reasons! 
+load("n2007.rda")
+load("n2008.rda")
+load("n2009.rda")
+load("n2010.rda")
+late2000 <- rbind(n2007, n2008, n2009, n2010) #624700 obs. 
+rm("n2007", "n2008", "n2009", "n2010")
+
+colnames(late2000)[5] <- "title"
+colnames(late2000)[6] <- "classification1"
+colnames(late2000)[7] <- "classification2"
+colnames(late2000)[8] <- "classification3"
+colnames(late2000)[17] <- "article"
+
+## randomly sample 10000 articles 
+set.seed(708)
+r2000r <- sample_n(late2000, 10000)
+dim(r2000) #10000, 19
+save(r2000, file="r2000.rda")
+
+## extracting the content of the articles 
+content <- r2000$article #class: character
+
+
+# pre-processing:
+content <- gsub("'", "", content)  # remove apostrophes
+content <- gsub("[[:punct:]]", " ", content)  # replace punctuation with space
+content <- gsub("[[:cntrl:]]", " ", content)  # replace control characters with space
+content <- gsub("^[[:space:]]+", "", content) # remove whitespace at beginning of documents
+content <- gsub("[[:space:]]+$", "", content) # remove whitespace at end of document
+
+### extracting the necessary parts (체언, 용언)
+texts <- r2000r$article #class: character
+
+ko_words <- function(doc) {
+  d <- as.character(doc)
+  pos <- unlist(SimplePos22(d))
+  
+  extracted <- str_match(pos, '([가-힣]+)/[NP][A-Z]')
+  
+  keyword <- extracted[, 2]
+  keyword[!is.na(keyword)]
+}
+
+texts <- texts %>%
+  str_replace_all(pattern="\r", replacement="") %>%
+  str_replace_all(pattern="\n", replacement=" ") %>%
+  str_replace_all(pattern="[[:punct:]]", replacement=" ") %>%
+  str_replace_all(pattern="[ㄱ-ㅎㅏ-ㅣ]+", replacement="") %>%
+  str_replace_all(pattern="/", replacement=" ") %>%
+  str_trim(side="both")
+
+texts <- texts[texts != ""]
+
+pos <- Map(ko_words, texts)
+
+term.table <- table(unlist(pos))
+term.table <- sort(term.table, decreasing = TRUE)
+
+# remove terms that are stop words or occur fewer than 5 times:
+del <- names(term.table) %in% stopWords | term.table < 5
+term.table <- term.table[!del]
+vocab <- names(term.table)
+
+# now put the documents into the format required by the lda package:
+get.terms <- function(x) {
+  index <- match(x, vocab)
+  index <- index[!is.na(index)]
+  rbind(as.integer(index - 1), as.integer(rep(1, length(index))))
+}
+documents <- lapply(pos, get.terms)
+
+# Compute some statistics related to the data set:
+D <- length(documents)  # number of documents (10000)
+W <- length(vocab)  # number of terms in the vocab (7860)
+doc.length <- sapply(documents, function(x) sum(x[2, ]))  # number of tokens per document
+N <- sum(doc.length)  # total number of tokens in the data 
+term.frequency <- as.integer(term.table)  # frequencies of terms in the corpus
+
+fit <- lda.collapsed.gibbs.sampler(documents = documents, K = K, vocab = vocab, 
+                                   num.iterations = G, alpha = alpha, 
+                                   eta = eta, initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+class(fit) #list 
+
+theta <- t(apply(fit$document_sums + alpha, 2, function(x) x/sum(x)))
+phi <- t(apply(t(fit$topics) + eta, 2, function(x) x/sum(x)))
+
+
+late2000s <- list(phi = phi,
+                     theta = theta,
+                     doc.length = doc.length,
+                     vocab = vocab,
+                     term.frequency = term.frequency)
+
+json <- createJSON(phi = late2000s$phi, 
+                   theta = late2000s$theta, 
+                   doc.length = late2000s$doc.length, 
+                   vocab = late2000s$vocab, 
+                   term.frequency = late2000s$term.frequency)
+serVis(json, out.dir = 'vis', open.browser = TRUE) ### opening the html file - encoding broken! 
+
+tidy_lda <- tidy(fit, matrix="beta")
+
+
+q_top_terms <- tidy_lda %>%
+  group_by(topic) %>%
+  top_n(15, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+q_top_terms %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill=factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~ topic, scales="free") +
+  coord_flip() +
+  ggtitle("LDA Categorization of late-2000s Articles")
+
+
+#######################################alternative LDA#########################################################
+# making it into a corpus 
+
+corpus <- Corpus(VectorSource(pos))
+
+stopWords <- c("밝히", "따르", "보이", "지나", "대하", "위하", "한경닷컴", "매일경제") ## removing the terms that 'dominate' the results, but not content-wise relevant
+
+dtm <- DocumentTermMatrix(corpus, control=list(
+  removePunctuation=TRUE, stopwords=stopWords, 
+  removeNumbers=TRUE, weighting=weightTf))
+
+##### removing the sparse terms, and excluding the zero-entry rows (from the analysis)
+dtm <- removeSparseTerms(dtm, 0.99)
+rowTotals <- apply(dtm , 1, sum) 
+dtm <- dtm[rowTotals> 0, ]
+
+## tuning parameters
+lda <- LDA(dtm, k=20) ## resulting LDA: LDA_VEM, topicmodels 
+
+tidy_lda <- tidy(lda, matrix="beta")
+
+q_top_terms <- tidy_lda %>%
+  group_by(topic) %>%
+  top_n(15, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+q_top_terms %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill=factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~ topic, scales="free") +
+  coord_flip() +
+  ggtitle("LDA Categorization of late-2000s Articles")
+
+
+
+##### LDA Visualization
+# viewing the results of LDA model
+terms(lda) # to view terms per topic
+topics(lda) # to view topics per document
+
+
+
+
+
+
+
+###### STM for the randomly sampled articles #####
+dtm <- DocumentTermMatrix(corpus, control=list(
+  removePunctuation=TRUE, stopwords=stopWords, 
+  removeNumbers=TRUE, weighting=weightTf))
+
+out <- stm::readCorpus(dtm, type = 'slam')
+
+out <- stm(documents = out$documents, 
+                   vocab = out$vocab, 
+                   K = 10, 
+                   prevalence = ~`classification1`, 
+                   data = r2000)
+
+
+tidystm <- tidy(out)
+tidygamma <- tidy(out, 'gamma')
+
+plot.tidy <- plot(out, type = 'labels')
+
+plot.tidy
+
+################################### Finding the 
+harmonicMean <- function(logLikelihoods, precision=2000L) {
+  llMed <- median(logLikelihoods)
+  as.double(llMed - log(mean(exp(-mpfr(logLikelihoods,
+                                       prec=precision) + llMed))))
+}
+
+seqk <- seq(2, 40, 1)
+burnin <- 1000
+iter <- 1000
+keep <- 50
+
+fitted_many <- lapply(seqk, function(k) LDA(dtm, k=k, method="Gibbs", control=list(burnin=burnin, iter=iter, keep=keep)))
+
+logLiks_many <- lapply(fitted_many, function(L) L@logLiks[-c(1:(burnin/keep))])
+
+hm_many <- sapply(logLiks_many, function(h) harmonicMean(h))
+
+ggplot(data.frame(seqk, hm_many), aes(x=seqk, y=hm_many)) +
+  geom_path(lwd=1.5) +
+  theme(text=element_text(family=NULL),
+        axis.title.y=element_text(vjust=1, size=16),
+        axis.title.x=element_text(vjust=-.5, size=16),
+        axis.text=element_text(size=16),
+        plot.title=element_text(size=20)) +
+  xlab('Number of Topics') +
+  ylab('Harmonic Mean') +
+  ggplot2::annotate("text", x=9, y=-199000, label=paste("The optimal number of topics is", seqk[which.max(hm_many)])) +
+  labs(title="Latent Dirichlet Allocation Analysis",
+       subtitle="How many distinct topics?")
+
+
+ 
+ 
+ 
+ 
