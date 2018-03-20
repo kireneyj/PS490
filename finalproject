@@ -623,6 +623,55 @@ top_terms %>%
   facet_wrap(~ topic, scales = "free") +
   coord_flip()
  
+load("cars.rda")
+content <- cars$본문
+
+late90s <- rbind(n1997, n1998, n1999, n2000)
+save(late90s, file="late90s.rda")
+
+load("late90s.rda")
+late90s <- late90s$본문
+
+contents <- gsub("'", "", late90s)  # remove apostrophes
+contents <- gsub("[[:punct:]]", " ", contents)  # replace punctuation with space
+contents <- gsub("[[:cntrl:]]", " ", contents)  # replace control characters with space
+contents <- gsub("^[[:space:]]+", "", contents) # remove whitespace at beginning of documents
+contents <- gsub("[[:space:]]+$", "", contents) # remove whitespace at end of document
+
+### extracting the necessary parts (체언, 용언)
+ko_words <- function(doc) {
+  d <- as.character(doc)
+  pos <- unlist(SimplePos22(d))
+  
+  extracted <- str_match(pos, '([가-힣]+)/[NP][A-Z]')
+  
+  keyword <- extracted[, 2]
+  keyword[!is.na(keyword)]
+}
+
+pos_late90s <- Map(ko_words, contents)
+
+class(pos_late90s) # list
+
+corpus_late90s <- Corpus(VectorSource(pos_late90s))
+
+save(corpus_late90s, file="corpus_late90s.rda")
+
+stopWords_common <- c("밝히", "따르", "보이")
+
+dtm_late90s <- DocumentTermMatrix(corpus_late90s, control = list(removePunctuation= TRUE, 
+                                                                 removeNumbers = TRUE, 
+                                                                 stopWords = stopWords_common, 
+                                                                 weighting=weightTf))
+
+
+dtm_late90s <- removeSparseTerms(dtm_late90s, 0.99)
+rowTotals <- apply(dtm_late90s, 1, sum) 
+dtm_late90s   <- dtm_late90s[rowTotals> 0, ]        
+
+lda_late90s_20 <- LDA(dtm_late90s, k=20)
+
+topics_late90s_20 <- tidy(lda_late90s_20, matrix="beta")
  
  
  
