@@ -1,3 +1,28 @@
+## necessary packages
+library(lda)
+library(LDAvis)
+library(servr) # for LDAvis 
+
+library(KoNLP) # for Korean analysis 
+library(data.table)
+library(lubridate)
+library(dplyr)
+library(plyr)
+library(tm)
+library(readxl)
+library(ggplot2)
+library(tidyverse)
+library(tidytext)
+library(topicmodels)
+library(stringr)
+library(stringi)
+
+library(Rmpfr) #for computing more elaborate floating point number
+
+
+
+buildDictionary(ext_dic = c('sejong', 'woorimalsam'))
+
 ##for late 2000s:
 late2000 <- rbind(n2007, n2008, n2009, n2010)
 class(late2000)
