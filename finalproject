@@ -433,6 +433,195 @@ ggplot(data.frame(seqk, hm_many), aes(x=seqk, y=hm_many)) +
        subtitle="How many distinct topics?")
 
 
+load("semiconductor.rda")
+## extracting the content of the articles 
+content <- semiconductor$본문
+
+# pre-processing:
+contents <- gsub("'", "", content)  # remove apostrophes
+contents <- gsub("[[:punct:]]", " ", contents)  # replace punctuation with space
+contents <- gsub("[[:cntrl:]]", " ", contents)  # replace control characters with space
+contents <- gsub("^[[:space:]]+", "", contents) # remove whitespace at beginning of documents
+contents <- gsub("[[:space:]]+$", "", contents) # remove whitespace at end of document
+
+### extracting the necessary parts (체언, 용언)
+ko_words <- function(doc) {
+  d <- as.character(doc)
+  pos <- unlist(SimplePos22(d))
+  
+  extracted <- str_match(pos, '([가-힣]+)/[NP][A-Z]')
+  
+  keyword <- extracted[, 2]
+  keyword[!is.na(keyword)]
+}
+
+semiconductor_pos <- Map(ko_words, contents)
+save(semiconductor_pos, file="semiconductor_pos.rda")
+
+
+
+### making it into corpus -> document-term matrix
+corpus_semiconductor <- Corpus(VectorSource(semiconductor_pos))
+stopwords_semiconductor <- c("밝히", "따르", "보이", "반도체", "대하", "위하") # default stopwords (for all topics)
+
+dtm_semiconductor <- DocumentTermMatrix(corpus_semiconductor, control=list(stopwords=stopwords_semiconductor))
+
+sout <- stm::readCorpus(dtm_semiconductor, type = 'slam')
+semiconductor.out <- stm(documents = sout$documents, 
+               vocab = sout$vocab, 
+               K = 5, 
+               prevalence = ~`통합 분류1`, 
+               data = semiconductor)
+class(semiconductor.out) #STM
+
+save(semiconductor.out, file="semiconductor.out.rda")
+
+tidytedout <- tidy(semiconductor.out)
+tidygamma <- tidy(semiconductor.out, 'gamma')
+
+plot.tidy.semiconductor <- plot(semiconductor.out, type = 'labels')
+plot.tidy
+
+
+
+semiconductor_lda_5 <- LDA(dtm_semiconductor, k=5)
+q_topics_semiconductor_5 <- tidy(semiconductor_lda_5, matrix="beta")
+
+semiconductor_top_terms <- q_topics_semiconductor_5 %>%
+  group_by(topic) %>%
+  top_n(15, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+semiconductor_top_terms %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill=factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~ topic, scales="free") +
+  coord_flip() +
+  ggtitle("LDA Categorization of Semiconductor-related Articles")
+
+semiconductor_lda_3 <- LDA(dtm_semiconductor, k=3)
+q_topics_semiconductor_3 <- tidy(semiconductor_lda_3, matrix="beta")
+
+
+semiconductor_top_terms_3 <- q_topics_semiconductor_3 %>%
+  group_by(topic) %>%
+  top_n(15, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+semiconductor_top_terms_3 %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill=factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~ topic, scales="free") +
+  coord_flip() +
+  ggtitle("LDA Categorization of Semiconductor-related Articles")
+
+######### Which model (k=5 vs. k=3) is more interpretable? 
+
+
+
+### LDA categorization first, find dominant words (across all models), include them as stopwords
+
+stopWords_cars <- c("밝히", "따르", "보이", "지나", "대하", "위하") ## removing the terms that 'dominate' the results, but not content-wise relevant
+
+dtm <- DocumentTermMatrix(corpus, control=list(
+  removePunctuation=TRUE, stopwords=stopWords, 
+  removeNumbers=TRUE, weighting=weightTf))
+
+##### removing the sparse terms, and excluding the zero-entry rows (from the analysis)
+adtm <- removeSparseTerms(dtm, 0.99)
+rowTotals <- apply(adtm , 1, sum) 
+adtm.new   <- adtm[rowTotals> 0, ]        
+
+q_lda <- LDA(adtm.new, k=5)
+
+### topic allocation through LDA 
+q_lda <- LDA(dtm, k=3, seed=1234)
+
+q_topics <- tidy(q_lda, matrix="beta")
+
+q_top_terms <- q_topics %>%
+  group_by(topic) %>%
+  top_n(15, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+q_top_terms %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill=factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~ topic, scales="free") +
+  coord_flip() +
+  ggtitle("LDA Categorization of Automobile-related Articles")
+
+# compute the table of terms:
+term.table <- table(unlist(contents))
+term.table <- sort(term.table, decreasing = TRUE)
+class(term.table)
+
+# remove terms that are stop words or occur fewer than 5 times:
+del <- names(term.table) %in% stop_words | term.table < 5
+term.table <- term.table[!del]
+vocab <- names(term.table)
+
+# now put the documents into the format required by the lda package:
+get.terms <- function(x) {
+  index <- match(x, vocab)
+  index <- index[!is.na(index)]
+  rbind(as.integer(index - 1), as.integer(rep(1, length(index))))
+}
+documents <- lapply(doc.list, get.terms)
+
+D <- length(documents)  # number of documents 
+W <- length(vocab)  # number of terms in the vocab 
+doc.length <- sapply(documents, function(x) sum(x[2, ]))  # number of tokens per document
+N <- sum(doc.length)  # total number of tokens in the data 
+term.frequency <- as.integer(term.table)  # frequencies of terms in the corpus 
+
+# MCMC and model tuning parameters:
+K <- 20
+G <- 5000
+alpha <- 0.02
+eta <- 0.02
+
+# Fit the model:
+library(lda)
+set.seed(357)
+t1 <- Sys.time()
+fit <- lda.collapsed.gibbs.sampler(documents = documents, K = K, vocab = vocab, 
+                                   num.iterations = G, alpha = alpha, 
+                                   eta = eta, initial = NULL, burnin = 0,
+                                   compute.log.likelihood = TRUE)
+t2 <- Sys.time()
+t2 - t1  # about 24 minutes on laptop
+
+trial1 <- LDA(term.table, k = 10)
+names(trial1)
+
+save(trial1, file="trial1.rda")
+
+plot(trial1)
+
+class(trial1)
+
+summary(trial1)
+tidy(trial1)
+
+top_terms <- tidytrial %>%
+  group_by(topic) %>%
+  top_n(10, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+
+top_terms %>%
+  mutate(term = reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ topic, scales = "free") +
+  coord_flip()
  
  
  
